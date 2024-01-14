@@ -1,2 +1,2 @@
 # swiglibmempy
-Experimental project that tries to wrap "Rdbo's" Libmem
+Experimental project that tries to wrap "Rdbo's" Libmem with SWIG into Python
