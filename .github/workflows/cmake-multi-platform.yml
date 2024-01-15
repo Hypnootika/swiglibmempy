@@ -84,7 +84,7 @@ jobs:
         run: |
           whl_file=$(ls build/python/dist/*.whl)
           echo "whl_file=$whl_file" >> $GITHUB_ENV
-          echo "::set-output name=whl_file::${whl_file}"
+          echo "whl_file=$whl_file" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: actions/create-release@v1
