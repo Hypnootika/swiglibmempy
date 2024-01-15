@@ -59,8 +59,11 @@ include(cpp)
 include(libmem)
 file(COPY ${LIBMEM_INCLUDE_DIRS}/libmem DESTINATION ${SUBPROJECT_DIR_INCLUDE})
 file(COPY ${_LIBMEM_RELEASE_LIBRARY} DESTINATION ${LIB_DIR})
+if(WIN32)
+  include(swig)
+endif()
 
-include(swig)
+
 
 option(FETCH_PYTHON_DEPS "Install python required modules if not available" ON)
 message(STATUS "Python fetch dependencies: ${FETCH_PYTHON_DEPS}")
