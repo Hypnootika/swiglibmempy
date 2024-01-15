@@ -18,13 +18,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest] #windows-latest
         build_type: [Release]
-        c_compiler: [gcc, clang, cl]
+        c_compiler: [gcc, clang] #, cl
         include:
-          - os: windows-latest
-            c_compiler: cl
-            cpp_compiler: cl
+          # - os: windows-latest
+          #   c_compiler: cl
+          #   cpp_compiler: cl
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
@@ -32,10 +32,10 @@ jobs:
             c_compiler: clang
             cpp_compiler: clang++
         exclude:
-          - os: windows-latest
-            c_compiler: gcc
-          - os: windows-latest
-            c_compiler: clang
+          # - os: windows-latest
+          #   c_compiler: gcc
+          # - os: windows-latest
+          #   c_compiler: clang
           - os: ubuntu-latest
             c_compiler: cl
 
@@ -83,8 +83,7 @@ jobs:
         id: prepare_release
         run: |
           whl_file=$(ls build/python/dist/*.whl)
-          echo "whl_file=$whl_file" >> $GITHUB_ENV
-          echo "whl_file=$whl_file" >> $GITHUB_OUTPUT
+          echo "whl_file_path=$whl_file" >> $GITHUB_ENV
 
       - name: Create Release
         uses: actions/create-release@v1
