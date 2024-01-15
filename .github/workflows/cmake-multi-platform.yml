@@ -59,7 +59,7 @@ jobs:
       - name: Build
         run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
       - name: Upload Artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: wheel-file
           path: build/python/dist/*.whl
@@ -74,7 +74,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Download Artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: wheel-file
           path: build/python/dist
@@ -82,7 +82,9 @@ jobs:
       - name: Prepare Release Asset
         run: |
           whl_file=$(ls build/python/dist/*.whl)
+          whl_filename=$(basename "$whl_file")
           echo "whl_file_path=$whl_file" >> $GITHUB_ENV
+          echo "whl_filename=$whl_filename" >> $GITHUB_ENV
 
       - name: Create Release
         id: create_release
@@ -91,7 +93,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.event.inputs.releaseVersion }}
-          release_name: Release ${{ github.event.inputs.releaseVersion }}
+          release_name: pyswiglibmem-${{ github.event.inputs.releaseVersion }}
           draft: false
           prerelease: false
           body: "Release ${github.event.inputs.releaseVersion}"
@@ -103,5 +105,5 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ${{ env.whl_file_path }}
-          asset_name: ${{ github.event.inputs.releaseVersion }}.whl
+          asset_name: ${{ env.whl_filename }}.whl
           asset_content_type: application/octet-stream
