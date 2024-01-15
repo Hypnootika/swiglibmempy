@@ -6,7 +6,13 @@ swig_add_library(pyLibmem
         OUTPUT_DIR ${CMAKE_BINARY_DIR}/python/${PYTHON_PROJECT}/libmem
         SOURCES libmem.i)
 add_library(${PROJECT_NAMESPACE}::pyLibmem ALIAS pyLibmem)
-
+if(WIN32)
+set(CMAKE_SWIG_FLAGS "-DLM_FORCE_OS_WIN;-DWIN32;-DLM_FORCE_COMPILER_MSVC;-DLM_FORCE_CHARSET_MB") 
+elseif(UNIX)
+set(CMAKE_SWIG_FLAGS "-DLM_FORCE_OS_LINUX;-Dlinux;-DLM_FORCE_COMPILER_CC;-DLM_FORCE_CHARSET_MB")
+else()
+set(CMAKE_SWIG_FLAGS "-DLM_FORCE_OS_LINUX;-Dlinux;-DLM_FORCE_COMPILER_CC;-DLM_FORCE_CHARSET_MB")
+endif()
 target_include_directories(pyLibmem PRIVATE ../include ${Python_INCLUDE_DIRS})
 set_property(TARGET pyLibmem PROPERTY SWIG_USE_TARGET_INCLUDE_DIRECTORIES ON)
 if(APPLE)
@@ -23,6 +29,7 @@ elseif(UNIX)
     )
 endif()
 if(WIN32)
+        
         target_link_libraries(pyLibmem PRIVATE ${PROJECT_NAMESPACE}::Libmem libmem::libmem "shell32.lib"
                 "user32.lib" "psapi.lib" "ntdll.lib")
 elseif(UNIX)

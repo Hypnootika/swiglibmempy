@@ -2,6 +2,17 @@
 
 %ignore LM_DeepPointer;
 %ignore LM_DeepPointerEx;
+#ifndef LM_OS
+# if (defined(WIN32) || defined(_WIN32) || defined(__WIN32)) || defined(__CYGWIN__)
+#   define LM_OS LM_OS_WIN
+# elif defined(__ANDROID__)
+#	define LM_OS LM_OS_ANDROID
+# elif defined(linux) || defined(__linux__)
+#	define LM_OS LM_OS_LINUX
+# elif defined(BSD) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+#	define LM_OS LM_OS_BSD
+#   endif
+#endif
 
 %include <inttypes.i>
 %include <typemaps.i>
@@ -24,13 +35,10 @@
 %feature("except", "1");
 %feature("directors", "1");
 %feature("valuewrapper", "1");
-%define LM_FORCE_OS_WIN %enddef
-%define WIN32 %enddef
+
 %define _M_AMD64 %enddef
 %define _M_X64 %enddef
 %define LM_FORCE_BITS_64 %enddef
-%define LM_FORCE_COMPILER_MSVC %enddef
-%define LM_FORCE_CHARSET_MB %enddef
 %define LM_FORCE_LANG_CPP %enddef
 
 %{
@@ -42,7 +50,9 @@
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
-#include <windows.h>
+#ifdef LM_OS_WIN
+    #include <windows.h>
+#endif
 #include "libmem/libmem.h"
 %}
 %typemap(in) lm_short_t, lm_long_t, lm_int8_t, lm_int16_t, lm_int32_t {
