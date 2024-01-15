@@ -42,8 +42,8 @@
 #include "libmem/libmem.h"
 %}
 
-
 %inline %{
+    
     typedef char               lm_cchar_t;
     typedef unsigned char      lm_uchar_t;
     typedef int                lm_int_t;
@@ -78,6 +78,11 @@
     typedef lm_uint32_t        lm_pid_t;
     typedef lm_uint32_t        lm_tid_t;
     typedef lm_uint64_t        lm_time_t;
+    typedef lm_cchar_t         lm_char_t;
+    typedef const lm_byte_t   *lm_bytearr_t;
+    typedef const lm_cchar_t  *lm_cstring_t;
+    typedef const lm_wchar_t  *lm_wstring_t;
+    typedef const lm_char_t   *lm_string_t;
     #define LM_MALLOC   malloc
     #define LM_CALLOC   calloc
     #define LM_REALLOC  realloc
@@ -89,23 +94,16 @@
     #define LM_FOPEN    fopen
     #define LM_FCLOSE   fclose
     #define LM_GETLINE  getline
+    #define LM_PATH_MAX 512
 %}
 
-%typemap(typecheck, precedence=SWIG_TYPECHECK_INTEGER) lm_pid_t, lm_prot_t{
+%typemap(typecheck, precedence=SWIG_TYPECHECK_INTEGER) lm_pid_t, lm_prot_t, lm_size_t, lm_uint64_t, lm_time_t, lm_uintmax_t, lm_address_t, lm_byte_t{
     $1 = PyLong_Check($input);}
-%typemap(in) lm_uint8_t, lm_uint16_t, lm_uint32_t, lm_pid_t, lm_tid_t, lm_prot_t, lm_byte_t{
-    if (!PyLong_Check($input)) {
-        PyErr_SetString(PyExc_ValueError, "Expected an integer");
-        return NULL;
-    }
-    $1 = ($1_type)PyLong_AsUnsignedLong($input);}
+%typemap(typecheck, precedence=SWIG_TYPECHECK_STRING) lm_string_t, lm_cstring_t{
+    $1 = PyUnicode_Check($input);}
 
-%typemap(typecheck, precedence=SWIG_TYPECHECK_INTEGER) lm_uint64_t, lm_time_t, lm_uintmax_t, lm_address_t {
-    $1 = PyLong_Check($input);}
-%typemap(typecheck, precedence=SWIG_TYPECHECK_INTEGER) lm_byte_t {
-    $1 = PyLong_Check($input);}
-%typemap(typecheck, precedence=SWIG_TYPECHECK_INTEGER) lm_address_t {
-    $1 = PyLong_Check($input);}
+%typemap(typecheck, precedence=SWIG_TYPECHECK_STRING) lm_bytearr_t{
+    $1 = PyBytes_Check($input);}
 %typemap(in) lm_uint64_t, lm_time_t, lm_uintmax_t, lm_address_t{
     if (!PyLong_Check($input)) {
         PyErr_SetString(PyExc_ValueError, "Expected an integer");
@@ -118,8 +116,12 @@
         return NULL;
     }
     $1 = ($1_type)PyLong_AsSsize_t($input);}
-%typemap(typecheck, precedence=SWIG_TYPECHECK_INTEGER) lm_size_t {
-    $1 = PyLong_Check($input);}
+%typemap(in) lm_uint8_t, lm_uint16_t, lm_uint32_t, lm_pid_t, lm_tid_t, lm_prot_t, lm_byte_t{
+    if (!PyLong_Check($input)) {
+        PyErr_SetString(PyExc_ValueError, "Expected an integer");
+        return NULL;
+    }
+    $1 = ($1_type)PyLong_AsUnsignedLong($input);}
 
    
 %typemap(in) lm_voidptr_t{
@@ -128,12 +130,14 @@
         return NULL;
     }
     $1 = ($1_type)PyLong_AsVoidPtr($input);}
-%typemap(in) lm_string_t, lm_cstring_t {
+%typemap(in) lm_string_t, lm_cstring_t{
     if (!PyUnicode_Check($input)) {
-        PyErr_SetString(PyExc_ValueError, "Expected a string");
+        PyErr_SetString(PyExc_ValueError, "Expected a string object");
         return NULL;
     }
-    $1 = PyUnicode_AsUTF8($input);}
+    wchar_t *str = PyUnicode_AsWideCharString($input, NULL);
+    $1 = (const lm_char_t *)str;
+    PyMem_Free(str);}
 %typemap(in) lm_bytearr_t {
     if (!PyBytes_Check($input)) {
         PyErr_SetString(PyExc_ValueError, "Expected a bytes object");
@@ -145,7 +149,7 @@
 %typemap(out) lm_uint64_t, lm_time_t, lm_uintmax_t , lm_address_t{$result = PyLong_FromUnsignedLongLong($1);}
 %typemap(out) lm_voidptr_t {$result = PyLong_FromVoidPtr($1);}
 %typemap(out) lm_bytearr_t {$result = PyBytes_FromString((const char *)$1);}
-%typemap(out) lm_string_t, lm_cstring_t {$result = PyBytes_FromString($1);}
+%typemap(out) lm_string_t, lm_cstring_t {$result = PyUnicode_FromString($1);}
 %typemap(out) lm_size_t {$result = PyLong_FromSsize_t($1);}
 %extend lm_process_t {
     %pythoncode %{
@@ -198,7 +202,7 @@
 
 %rename("%(regex:/^LM_([A-Za-z0-9_]+)/__\\1/)s", %$isfunction) "";
 
-%include "libmem/libmem.h"
+
 
 %inline %{
     std::vector<lm_process_t> lm_enumprocesses() {
@@ -211,7 +215,16 @@
         LM_EnumProcesses(callback, &processes);
         return processes;
         }
-    std::vector<lm_thread_t> lm_enumthreads(const lm_process_t *process = nullptr) {
+    std::vector<lm_thread_t> lm_enumthreads() {
+        std::vector<lm_thread_t> threads;
+        auto callback = [](lm_thread_t *pthread, lm_void_t *arg) -> lm_bool_t {
+            std::vector<lm_thread_t>* threadList = (std::vector<lm_thread_t>*)arg;
+            threadList->push_back(*pthread);
+            return 1;
+        };
+        LM_EnumThreads(callback, &threads);
+        return threads;}
+    std::vector<lm_thread_t> lm_enumthreads(const lm_process_t *process) {
         std::vector<lm_thread_t> threads;
         auto callback = [](lm_thread_t *pthread, lm_void_t *arg) -> lm_bool_t {
             std::vector<lm_thread_t>* threadList = (std::vector<lm_thread_t>*)arg;
@@ -225,7 +238,16 @@
         }
         return threads;}
 
-    std::vector<lm_module_t> lm_enummodules(const lm_process_t *process = nullptr) {
+    std::vector<lm_module_t> lm_enummodules() {
+        std::vector<lm_module_t> modules;
+        auto callback = [](lm_module_t *pmodule, lm_void_t *arg) -> lm_bool_t {
+            std::vector<lm_module_t>* moduleList = (std::vector<lm_module_t>*)arg;
+            moduleList->push_back(*pmodule);
+            return 1;
+        };
+        LM_EnumModules(callback, &modules);
+        return modules;}
+    std::vector<lm_module_t> lm_enummodules(const lm_process_t *process) {
         std::vector<lm_module_t> modules;
         auto callback = [](lm_module_t *pmodule, lm_void_t *arg) -> lm_bool_t {
             std::vector<lm_module_t>* moduleList = (std::vector<lm_module_t>*)arg;
@@ -239,8 +261,16 @@
         }
         return modules;}
 
-
-    std::vector<lm_page_t> lm_enumpages(const lm_process_t *process = nullptr) {
+    std::vector<lm_page_t> lm_enumpages() {
+        std::vector<lm_page_t> pages;
+        auto callback = [](lm_page_t *ppage, lm_void_t *arg) -> lm_bool_t {
+            std::vector<lm_page_t>* pageList = (std::vector<lm_page_t>*)arg;
+            pageList->push_back(*ppage);
+            return 1;
+        };
+        LM_EnumPages(callback, &pages);
+        return pages;}
+    std::vector<lm_page_t> lm_enumpages(const lm_process_t *process) {
         std::vector<lm_page_t> pages;
         auto callback = [](lm_page_t *ppage, lm_void_t *arg) -> lm_bool_t {
             std::vector<lm_page_t>* pageList = (std::vector<lm_page_t>*)arg;
@@ -254,51 +284,57 @@
             LM_EnumPages(callback, &pages);
         }
         return pages;}
-    lm_process_t lm_get_process(lm_pid_t pid = 0, lm_string_t name = 0) {
-        lm_process_t process;
-        if (pid != 0) {
-            LM_GetProcessEx(pid, &process);
-        } else if (name != NULL) {
-            LM_FindProcess(name, &process);
-        } else {
-            LM_GetProcess(&process);
-        }
-        return process;}
-    lm_module_t lm_get_module(const lm_process_t *process = 0, lm_string_t name = 0) {
+    lm_process_t lm_get_process(){
+        lm_process_t proc;
+        LM_GetProcess(&proc);
+        return proc;}
+    lm_process_t lm_get_process(lm_pid_t pid){
+        lm_process_t proc;
+        LM_GetProcessEx(pid, &proc);
+        return proc;}
+    lm_process_t lm_get_process(lm_char_t *name){
+        lm_process_t proc;
+        LM_FindProcess(name, &proc);
+        return proc;}
+    lm_module_t lm_get_module(lm_char_t *name) {
         lm_module_t mod;
-        if (process != NULL) {
-            LM_FindModuleEx(process, name, &mod);
-        } else {
-            LM_FindModule(name, &mod);
-        }
+        LM_FindModule(name, &mod);
         return mod;}
-    lm_page_t lm_get_page(const lm_process_t *process = 0, lm_address_t address = 0) {
+    lm_module_t lm_get_module(const lm_process_t *process, lm_char_t *name) {
+        lm_module_t mod;
+        LM_FindModuleEx(process, name, &mod);
+        return mod;}
+
+    lm_page_t lm_get_page(lm_address_t address) {
         lm_page_t page;
-        if (process != NULL) {
-            LM_GetPageEx(process, address, &page);
-        } else {
-            LM_GetPage(address, &page);
-        }
+        LM_GetPage(address, &page);
+        return page;}
+    lm_page_t lm_get_page(const lm_process_t *process, lm_address_t address) {
+        lm_page_t page;
+        LM_GetPageEx(process, address, &page);
         return page;}
 
-    lm_thread_t lm_get_thread(const lm_process_t *process = 0) {
+    lm_thread_t lm_get_thread() {
         lm_thread_t thread;
-        if (process != NULL) {
-            LM_GetThreadEx(process, &thread);
-        } else {
-            LM_GetThread(&thread);
-        }    
+        LM_GetThread(&thread);
         return thread;}
+    lm_thread_t lm_get_thread(const lm_process_t *process) {
+        lm_thread_t thread;
+        LM_GetThreadEx(process, &thread);
+        return thread;}
+
     lm_bool_t lm_is_process_alive(const lm_process_t *process = nullptr) {
         if (process == nullptr) {
             lm_process_t cur_process = lm_get_process();
-            return LM_IsProcessAlive(&cur_process);
+            lm_bool_t result = LM_IsProcessAlive(&cur_process);
+            return result;
         } else {
-            return LM_IsProcessAlive(process);
+            lm_bool_t result =  LM_IsProcessAlive(process);
+            return result;
         }}
     lm_size_t lm_get_system_bits() {
         return LM_GetSystemBits();}
-    lm_process_t lm_get_thread_process(const lm_thread_t *thread = 0) {
+    lm_process_t lm_get_thread_process(const lm_thread_t *thread = nullptr) {
         lm_process_t proc;
         if (!thread) {
             lm_thread_t thread = lm_get_thread();
@@ -306,38 +342,38 @@
             return proc;}
         LM_GetThreadProcess(thread, &proc);
         return proc;}
-    lm_module_t lm_loadmodule( lm_string_t path, const lm_process_t *process = nullptr) {
+    lm_module_t lm_loadmodule( lm_string_t path) {
         lm_module_t mod;
-        if (process != nullptr) {
-            LM_LoadModuleEx(process, path, &mod);
-        } else {
-            LM_LoadModule(path, &mod);
-        }
+        LM_LoadModule(path, &mod);
         return mod;}
-    lm_bool_t lm_unloadmodule(lm_module_t *pmod, const lm_process_t *process = nullptr) {
-        if (process != nullptr) {
-            return LM_UnloadModuleEx(process, pmod);
-        } else {
-            return LM_UnloadModule(pmod);
-        }}
-    PyObject* lm_readmemory(lm_address_t src, lm_size_t size, const lm_process_t *pproc = nullptr) {
-        if ((!pproc && src == LM_ADDRESS_BAD) || size == 0 || (pproc && !LM_VALID_PROCESS(pproc))) {
-            Py_RETURN_NONE;
-        }
+    lm_module_t lm_loadmodule(const lm_process_t *process, lm_string_t path) {
+        lm_module_t mod;
+        LM_LoadModuleEx(process, path, &mod);
+        return mod;}
+    lm_bool_t lm_unloadmodule(lm_module_t *pmod) {
+        return LM_UnloadModule(pmod);}
+    lm_bool_t lm_unloadmodule(const lm_process_t *process, lm_module_t *pmod) {
+        return LM_UnloadModuleEx(process, pmod);}
+    lm_byte_t* lm_readmemory(lm_address_t src, lm_size_t size) {
         lm_byte_t* dst = (lm_byte_t*)malloc(size);
         if (!dst) {
-            PyErr_NoMemory();
             return NULL;
         }
-        lm_size_t read = pproc ? LM_ReadMemoryEx(pproc, src, dst, size) : LM_ReadMemory(src, dst, size);
-        if (read != size) {
+        lm_size_t read_size = LM_ReadMemory(src, dst, size);
+        if (read_size != size) {
             free(dst);
-            Py_RETURN_NONE;
+            return NULL; }
+        return dst;}
+    lm_byte_t* lm_readmemory(const lm_process_t *process, lm_address_t src, lm_size_t size) {
+        lm_byte_t* dst = (lm_byte_t*)malloc(size);
+        if (!dst) {
+            return NULL;
         }
-        PyObject* result = PyByteArray_FromStringAndSize((const char*)dst, size);
-        free(dst);
-        return result;}
-
+        lm_size_t read_size = LM_ReadMemoryEx(process, src, dst, size);
+        if (read_size != size) {
+            free(dst);
+            return NULL; }
+        return dst; }
     PyObject* lm_writememory(lm_address_t dst, lm_bytearr_t src, lm_size_t size, const lm_process_t *pproc = nullptr) {
         if ((!pproc && dst == LM_ADDRESS_BAD) || size == 0 || (pproc && !LM_VALID_PROCESS(pproc))) {
             Py_RETURN_NONE;
@@ -383,3 +419,4 @@
     lm_size_t lm_codelength(lm_address_t code, lm_size_t minlength, lm_process_t *pproc = nullptr) {
         return pproc ? LM_CodeLengthEx(pproc, code, minlength) : LM_CodeLength(code, minlength);}
 %}
+%include "libmem/libmem.h"
