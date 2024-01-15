@@ -51,6 +51,17 @@
     typedef lm_uint32_t        lm_pid_t;
     typedef lm_uint32_t        lm_tid_t;
     typedef lm_uint64_t        lm_time_t;
+    #define LM_MALLOC   malloc
+    #define LM_CALLOC   calloc
+    #define LM_REALLOC  realloc
+    #define LM_FREE     free
+    #define LM_MEMCMP   memcmp
+    #define LM_MEMCPY   memcpy
+    #define LM_MEMSET   memset
+    #define LM_ASSERT   assert
+    #define LM_FOPEN    fopen
+    #define LM_FCLOSE   fclose
+    #define LM_GETLINE  getline
 %}
 %{
     #include <Python.h>
@@ -94,12 +105,18 @@
         return NULL;
     }
     $1 = ($1_type)PyLong_AsLongLong($input);}
-%typemap(in) lm_ullong_t, lm_uint64_t, lm_time_t, lm_uintmax_t, lm_qword_t, lm_size_t{
+%typemap(in) lm_ullong_t, lm_uint64_t, lm_time_t, lm_uintmax_t, lm_qword_t{
     if (!PyLong_Check($input)) {
         PyErr_SetString(PyExc_ValueError, "Expected an integer");
         return NULL;
     }
     $1 = ($1_type)PyLong_AsUnsignedLongLong($input);}
+%typemap(in) lm_size_t {
+    if (!PyLong_Check($input)) {
+        PyErr_SetString(PyExc_ValueError, "Expected an integer");
+        return NULL;
+    }
+    $1 = ($1_type)PyLong_AsSsize_t($input);}
 %typemap(in) lm_cchar_t, lm_uchar_t {
     if (!PyUnicode_Check($input)) {
         PyErr_SetString(PyExc_ValueError, "Expected a string");
@@ -155,7 +172,7 @@
 %typemap(out) lm_bytearr_t {$result = PyBytes_FromString((const char *)$1);}
 %typemap(out) lm_string_t, lm_cstring_t {$result = PyBytes_FromString($1);}
 %typemap(out) lm_intptr_t, lm_uintptr_t, lm_address_t {$result = PyLong_FromVoidPtr((void *)$1);}
-%typemap(out) lm_size_t {$result = PyLong_FromSize_t($1);}
+%typemap(out) lm_size_t {$result = PyLong_FromSsize_t($1);}
 %typemap(out) lm_bool_t {$result = PyBool_FromLong($1);}
 %extend lm_process_t {
     %pythoncode %{
@@ -273,7 +290,9 @@
 %rename(__vmtgetoriginal) LM_VmtGetOriginal;
 %rename(__vmtreset) LM_VmtReset;
 %rename(__vmtfree) LM_VmtFree;
+
 %include "libmem/libmem.h"
+
 %inline %{
     std::vector<lm_process_t> lm_enumprocesses() {
         std::vector<lm_process_t> processes;
@@ -415,8 +434,8 @@
 %}
 %inline %{
     lm_bool_t lm_is_process_alive(const lm_process_t *process) {
-        lm_process_t proc;
-        return LM_IsProcessAlive(&proc);}
+        return LM_IsProcessAlive(process);}
+
     lm_size_t lm_get_system_bits() {
         return LM_GetSystemBits();}
     lm_process_t lm_get_thread_process(const lm_thread_t *thread) {
@@ -447,63 +466,99 @@
         return demangled;}
     lm_address_t lm_find_symbol_address_demangled(const lm_module_t *pmod, lm_cstring_t name) {
         return LM_FindSymbolAddressDemangled(pmod, name);}
-    lm_bytearr_t lm_readmemory(lm_address_t src, lm_size_t size) {
-        lm_byte_t* buf = (lm_byte_t*)malloc(size);
-        if (!buf) {
-            PyErr_SetString(PyExc_MemoryError, "Failed to allocate memory");
-            return NULL;
+    PyObject* lm_readmemory(lm_address_t src, lm_size_t size) {
+        if (src == LM_ADDRESS_BAD || size == 0) {
+            Py_RETURN_NONE;
         }
-        if (LM_ReadMemory(src, buf, size) != size) {
-            free(buf);
-            PyErr_SetString(PyExc_RuntimeError, "Failed to read memory");
-            return NULL;
-        }
-        return (lm_bytearr_t)buf; }
-    lm_bytearr_t lm_readmemoryex(const lm_process_t *process, lm_address_t src, lm_size_t size) {
-        lm_byte_t* buf = (lm_byte_t*)malloc(size);
-        if (!buf) {
-            PyErr_SetString(PyExc_MemoryError, "Failed to allocate memory");
-            return NULL;
-        }
-        if (LM_ReadMemoryEx(process, src, buf, size) != size) {
-            free(buf);
-            PyErr_SetString(PyExc_RuntimeError, "Failed to read memory");
-            return NULL;
-        }
-        return (lm_bytearr_t)buf; }
-    lm_bool_t lm_writememory(lm_address_t dst, lm_bytearr_t src, lm_size_t size) {
-        if (LM_WriteMemory(dst, src, size) != size) {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to write memory");
-            return 0;
-        }
-        return 1;}
-    lm_bool_t lm_writememoryex(const lm_process_t *process, lm_address_t dst, lm_bytearr_t src, lm_size_t size) {
-        if (LM_WriteMemoryEx(process, dst, src, size) != size) {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to write memory");
-            return 0;
-        }
-        return 1;}
-    lm_bool_t lm_setmemory(lm_address_t dst, lm_byte_t byte, lm_size_t size) {
-        if (size <= 0) {
-            PyErr_SetString(PyExc_ValueError, "Size must be positive");
-            return 0;
-        }
-        if (LM_SetMemory(dst, byte, size) != size) {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to set memory");
-            return 0;
-        }
-        return 1;}
 
-    lm_bool_t lm_setmemoryex(const lm_process_t *process, lm_address_t dst, lm_byte_t byte, lm_size_t size) {
-        if (size <= 0) {
-            PyErr_SetString(PyExc_ValueError, "Size must be positive");
-            return 0;
+        lm_byte_t* dst = (lm_byte_t*)malloc(size);
+        if (!dst) {
+            PyErr_NoMemory();
+            return NULL;
         }
-        if (LM_SetMemoryEx(process, dst, byte, size) != size) {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to set memory");
-            return 0;
+
+        lm_size_t read = LM_ReadMemory(src, dst, size);
+        if (read != size) {
+            free(dst);
+            Py_RETURN_NONE;
         }
-        return 1;}
+
+        PyObject* result = PyByteArray_FromStringAndSize((const char*)dst, size);
+        free(dst);
+        return result;
+    }
+    PyObject* lm_readmemoryex(const lm_process_t *pproc, lm_address_t src, lm_size_t size) {
+        if (!pproc || !LM_VALID_PROCESS(pproc) || src == LM_ADDRESS_BAD || size == 0) {
+            Py_RETURN_NONE;
+        }
+
+        lm_byte_t* dst = (lm_byte_t*)malloc(size);
+        if (!dst) {
+            PyErr_NoMemory();
+            return NULL;
+        }
+
+        lm_size_t read = LM_ReadMemoryEx(pproc, src, dst, size);
+        if (read != size) {
+            free(dst);
+            Py_RETURN_NONE;
+        }
+
+        PyObject* result = PyByteArray_FromStringAndSize((const char*)dst, size);
+        free(dst);
+        return result;
+        }
+    PyObject* lm_writememory(lm_address_t dst, lm_bytearr_t src, lm_size_t size) {
+        if (dst == LM_ADDRESS_BAD || size == 0) {
+            Py_RETURN_NONE;
+        }
+
+        lm_size_t written = LM_WriteMemory(dst, src, size);
+        if (written != size) {
+            Py_RETURN_NONE;
+        }
+
+        Py_RETURN_TRUE;
+    }
+    PyObject* lm_writememoryex(const lm_process_t *pproc, lm_address_t dst, lm_bytearr_t src, lm_size_t size) {
+        if (!pproc || !LM_VALID_PROCESS(pproc) || dst == LM_ADDRESS_BAD || size == 0) {
+            Py_RETURN_NONE;
+        }
+
+        lm_size_t written = LM_WriteMemoryEx(pproc, dst, src, size);
+        if (written != size) {
+            Py_RETURN_NONE;
+        }
+
+        Py_RETURN_TRUE;
+        }
+
+    lm_size_t lm_setmemory(lm_address_t dst, lm_byte_t byte, lm_size_t size) {
+        if (dst == LM_ADDRESS_BAD || size == 0) {
+            return (lm_size_t)0;
+        }
+
+        lm_size_t written = LM_SetMemory(dst, byte, size);
+        if (written != size) {
+            return (lm_size_t)0;
+        }
+
+        return written;
+    }
+
+    lm_size_t lm_setmemoryex(const lm_process_t *pproc, lm_address_t dst, lm_byte_t byte, lm_size_t size) {
+        if (!pproc || !LM_VALID_PROCESS(pproc) || dst == LM_ADDRESS_BAD || size == 0) {
+            return (lm_size_t)0;
+        }
+
+        lm_size_t written = LM_SetMemoryEx(pproc, dst, byte, size);
+        if (written != size) {
+            return (lm_size_t)0;
+        }
+
+        return written;
+        }
+
     lm_prot_t lm_protmemory(lm_address_t addr, lm_size_t size, lm_prot_t prot) {
         lm_prot_t oldprot;
         lm_bool_t result = LM_ProtMemory(addr, size, prot, &oldprot);
@@ -527,88 +582,85 @@
         return LM_FreeMemory(alloc, size);}
     lm_bool_t lm_freememoryex(const lm_process_t *process, lm_address_t alloc, lm_size_t size) {
         return LM_FreeMemoryEx(process, alloc, size);}
-    lm_address_t lm_datascan(lm_bytearr_t data, lm_size_t size, lm_address_t addr, lm_size_t scansize) {
-        lm_address_t result = LM_DataScan(data, size, addr, scansize);
-        if (result == (lm_address_t)LM_ADDRESS_BAD) {
-            return (lm_address_t)0;  
-        }
-        return result;}
-    lm_address_t lm_datascanex(const lm_process_t *pproc, lm_bytearr_t data, lm_size_t size, lm_address_t addr, lm_size_t scansize) {
-        lm_address_t result = LM_DataScanEx(pproc, data, size, addr, scansize);
-        if (result == (lm_address_t)LM_ADDRESS_BAD) {
-            return (lm_address_t)0;  
-        }
-        return result;}
     lm_address_t lm_patternscan(lm_bytearr_t pattern, lm_string_t mask, lm_address_t addr, lm_size_t scansize) {
-        lm_address_t result = LM_PatternScan(pattern, mask, addr, scansize);
-        return result == (lm_address_t)LM_ADDRESS_BAD ? (lm_address_t)0 : result;}
-    lm_address_t lm_patternscanex(const lm_process_t *pproc, lm_bytearr_t pattern, lm_size_t pattern_size, lm_string_t mask, lm_address_t addr, lm_size_t scansize) {
-        lm_address_t result = LM_PatternScanEx(pproc, pattern, mask, addr, scansize);
-        return result == (lm_address_t)LM_ADDRESS_BAD ? (lm_address_t)0 : result;}
+        PyObject *pypattern;
+        lm_address_t scan_match;
+        pattern = (lm_bytearr_t)&pypattern;
+        mask = (lm_string_t)PyBytes_AsString(pypattern);
+        scan_match = LM_PatternScan(pattern, mask, addr, scansize);
+        if (scan_match == LM_ADDRESS_BAD)
+            return LM_ADDRESS_BAD;
+        return scan_match;}
+    lm_address_t lm_patternscanex(const lm_process_t *pproc, lm_bytearr_t pattern, lm_string_t mask, lm_address_t addr, lm_size_t scansize) {
+        PyObject *pypattern;
+        lm_address_t scan_match;
+        lm_process_t *process = (lm_process_t *)pproc;
+        pattern = (lm_bytearr_t)&pypattern;
+        mask = (lm_string_t)PyBytes_AsString(pypattern);
+        scan_match = LM_PatternScanEx(pproc, pattern, mask, addr, scansize);
+        if (scan_match == LM_ADDRESS_BAD)
+            return LM_ADDRESS_BAD;
+        return scan_match;}
     lm_address_t lm_sigscan(lm_string_t sig, lm_address_t addr, lm_size_t scansize) {
         lm_address_t result = LM_SigScan(sig, addr, scansize);
         return result == (lm_address_t)LM_ADDRESS_BAD ? (lm_address_t)0 : result;}
     lm_address_t lm_sigscanex(const lm_process_t *pproc, lm_string_t sig, lm_address_t addr, lm_size_t scansize) {
         lm_address_t result = LM_SigScanEx(pproc, sig, addr, scansize);
         return result == (lm_address_t)LM_ADDRESS_BAD ? (lm_address_t)0 : result;}
-    lm_size_t lm_hookcode(lm_address_t from, lm_address_t to, lm_address_t* trampoline) {
-        return LM_HookCode(from, to, trampoline);}
-    lm_size_t lm_hookcodeex(const lm_process_t *pproc, lm_address_t from, lm_address_t to, lm_address_t* trampoline) {
-        return LM_HookCodeEx(pproc, from, to, trampoline);}
-    lm_bool_t lm_unhookcode(lm_address_t from, lm_address_t trampoline, lm_size_t size) {
-        return LM_UnhookCode(from, trampoline, size);}
-    lm_bool_t lm_unhookcodeex(const lm_process_t *pproc, lm_address_t from, lm_address_t trampoline, lm_size_t size) {
-        return LM_UnhookCodeEx(pproc, from, trampoline, size);}
-    lm_inst_t* lm_assemble(lm_cstring_t code) {
-        static lm_inst_t inst;
-        if (LM_Assemble(code, &inst)) {
-            return &inst;
-        } else {
-            return NULL;}}
-    lm_bytearr_t lm_assembleex(lm_cstring_t code, lm_size_t bits, lm_address_t runtime_addr) {
-        lm_byte_t* codebuf;
-        lm_size_t size = LM_AssembleEx(code, bits, runtime_addr, &codebuf);
-        if (size > 0) {
-            return codebuf;
-        } else {
-            return NULL;}}
-    lm_inst_t* lm_disassemble(lm_address_t code) {
-        static lm_inst_t inst;
-        if (LM_Disassemble(code, &inst)) {
-            return &inst;
-        } else {
-            return NULL;}}
-    lm_inst_t* lm_disassembleex(lm_address_t code, lm_size_t bits, lm_size_t size, lm_size_t count, lm_address_t runtime_addr) {
-        static lm_inst_t* insts;
-        lm_size_t num_insts = LM_DisassembleEx(code, bits, size, count, runtime_addr, &insts);
-        if (num_insts > 0) {
-            return insts;
-        } else {
-            return NULL;}}
+     static PyObject *  lm_hookcode(lm_address_t from, lm_address_t to) {
+        lm_address_t trampoline;
+        lm_size_t    size;
+        size = LM_HookCode(from, to, &trampoline);
+        return Py_BuildValue("(nn)", trampoline, size);}
+    static PyObject * lm_hookcodeex(const lm_process_t *pproc, lm_address_t from, lm_address_t to) {
+        lm_address_t trampoline;
+        lm_size_t    size;
+        lm_process_t *process = (lm_process_t *)pproc;
+        size = LM_HookCodeEx(pproc, from, to, &trampoline);
+        return Py_BuildValue("(nn)", trampoline, size); }
+    lm_bool_t lm_unhookcode(lm_address_t from, lm_address_t trampoline,lm_size_t    size ){
+            if (!LM_UnhookCode(from, trampoline, size))
+                return LM_FALSE;
+
+            return LM_TRUE;}
+    lm_bool_t lm_unhookcodeex(lm_process_t *pproc,lm_address_t from, lm_address_t trampoline,lm_size_t    size ){
+            lm_process_t *proc = (lm_process_t *)pproc;
+            if (!LM_UnhookCodeEx(proc, from, trampoline, size))
+                return LM_FALSE;
+
+            return LM_TRUE;}
     lm_size_t lm_codelength(lm_address_t code, lm_size_t minlength) {
         lm_size_t length = LM_CodeLength(code, minlength);
         if (length == 0) {
-            return (lm_size_t)0;
-        }
+            return (lm_size_t)0; }
         return length;}
     lm_size_t lm_codelengthex(lm_process_t *pproc, lm_address_t code, lm_size_t minlength) {
         lm_size_t length = LM_CodeLengthEx(pproc, code, minlength);
         if (length == 0) {
-            return (lm_size_t)0;
-        }
+            return (lm_size_t)0;}
         return length;}
-    void lm_vmtnew(lm_address_t *vtable, lm_vmt_t *vmtbuf) {
-        LM_VmtNew(vtable, vmtbuf);}
+/*     lm_void_t lm_vmtnew(lm_address_t *vtable,lm_vmt_t *pvmt) {
+        lm_vmt_t *vmt = (lm_vmt_t *)pvmt;
+        lm_address_t *vtab = (lm_address_t *)vtable;
+        lm_address_t result = reinterpret_cast<lm_address_t>(LM_VmtNew(vtab));
+        return result;}
+        
+       
     lm_bool_t lm_vmthook(lm_vmt_t *pvmt, lm_size_t fnindex, lm_address_t dst) {
-        return LM_VmtHook(pvmt, fnindex, dst);}
+        lm_vmt_t *vmt = (lm_vmt_t *)pvmt;
+        return LM_VmtHook(vmt, fnindex, dst);}
     void lm_vmtunhook(lm_vmt_t *pvmt, lm_size_t fnindex) {
-        LM_VmtUnhook(pvmt, fnindex);}
+        lm_vmt_t *vmt = (lm_vmt_t *)pvmt;
+        LM_VmtUnhook(vmt, fnindex);}
     lm_address_t lm_vmtgetoriginal(const lm_vmt_t *pvmt, lm_size_t fnindex) {
-        return LM_VmtGetOriginal(pvmt, fnindex);}
+        lm_vmt_t *vmt = (lm_vmt_t *)pvmt;
+        return LM_VmtGetOriginal(vmt, fnindex);}
     void lm_vmtreset(lm_vmt_t *pvmt) {
-        LM_VmtReset(pvmt);}
-    void lm_vmtfree(lm_vmt_t *pvmt) {
-        LM_VmtFree(pvmt);}
+        lm_vmt_t *vmt = (lm_vmt_t *)pvmt;
+        LM_VmtReset(vmt);}
+    void lm_vmtfree(lm_vmt_t *pvmt) { */
+/*         lm_vmt_t *vmt = (lm_vmt_t *)pvmt;
+        LM_VmtFree(vmt);} */
 %}
 
 

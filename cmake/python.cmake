@@ -1,18 +1,25 @@
 cmake_minimum_required(VERSION 3.18)
+
 set(CMAKE_SWIG_FLAGS)
 find_package(SWIG REQUIRED)
 include(UseSWIG)
-if(WIN32)
-set(CMAKE_SWIG_FLAGS "-DLM_COMPATIBLE;-DLM_FORCE_BITS_64;-DLM_FORCE_LANG_CPP;-DLM_FORCE_ARCH_X86;-DLM_FORCE_OS_WIN;-DWIN32;-DLM_FORCE_COMPILER_MSVC;-DLM_FORCE_CHARSET_MB") 
-elseif(UNIX)
-set(CMAKE_SWIG_FLAGS "-DLM_FORCE_BITS_64;-DLM_FORCE_LANG_CPP;-DLM_FORCE_ARCH_X86;-DLM_FORCE_OS_LINUX;-Dlinux;-DLM_FORCE_COMPILER_CC;-DLM_FORCE_CHARSET_MB")
-else()
-set(CMAKE_SWIG_FLAGS "-DLM_FORCE_BITS_64;-DLM_FORCE_LANG_CPP;-DLM_FORCE_ARCH_X86;-DLM_FORCE_OS_LINUX;-Dlinux;-DLM_FORCE_COMPILER_CC;-DLM_FORCE_CHARSET_MB")
-endif()
 
+if(${SWIG_VERSION} VERSION_GREATER_EQUAL 4)
+  list(APPEND CMAKE_SWIG_FLAGS "-doxygen")
+endif()
 if(UNIX AND NOT APPLE)
   list(APPEND CMAKE_SWIG_FLAGS "-DSWIGWORDSIZE64")
 endif()
+
+if(WIN32)
+  set(CMAKE_SWIG_FLAGS "-DLM_COMPATIBLE;-DLM_FORCE_BITS_64;-DLM_FORCE_LANG_CPP;-DLM_FORCE_ARCH_X86;-DLM_FORCE_OS_WIN;-DWIN32;-DLM_FORCE_COMPILER_MSVC;-DLM_FORCE_CHARSET_MB") 
+elseif(UNIX)
+  set(CMAKE_SWIG_FLAGS "-DLM_FORCE_BITS_64;-DLM_FORCE_LANG_CPP;-DLM_FORCE_ARCH_X86;-DLM_FORCE_OS_LINUX;-Dlinux;-DLM_FORCE_COMPILER_CC;-DLM_FORCE_CHARSET_MB")
+else()
+  set(CMAKE_SWIG_FLAGS "-DLM_FORCE_BITS_64;-DLM_FORCE_LANG_CPP;-DLM_FORCE_ARCH_X86;-DLM_FORCE_OS_LINUX;-Dlinux;-DLM_FORCE_COMPILER_CC;-DLM_FORCE_CHARSET_MB")
+endif()
+
+
 find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
 function(search_python_module)
     set(options NO_VERSION)
@@ -65,13 +72,14 @@ endfunction()
 
 
 list(APPEND CMAKE_SWIG_FLAGS "-I${PROJECT_SOURCE_DIR}")
-set(PYTHON_PROJECT "py${PROJECT_NAME}")
+set(PYTHON_PROJECT "SwigLibmem")
 message(STATUS "Python project: ${PYTHON_PROJECT}")
 set(PYTHON_PROJECT_DIR ${PROJECT_BINARY_DIR}/python/${PYTHON_PROJECT})
 message(STATUS "Python project build path: ${PYTHON_PROJECT_DIR}")
 foreach(P IN ITEMS Libmem)
     add_subdirectory(${P}/python)
 endforeach()
+set(PYTHON_PROJECT_PATH ${PROJECT_BINARY_DIR}/$<CONFIG>/python/${PYTHON_PROJECT})
 
 file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/__init__.py CONTENT "__version__ = \"${PROJECT_VERSION}\"\n")
 file(GENERATE OUTPUT ${PYTHON_PROJECT_DIR}/libmem/__init__.py CONTENT "")
@@ -80,18 +88,21 @@ configure_file(${PROJECT_SOURCE_DIR}/python/setup.py.in ${PROJECT_BINARY_DIR}/py
 file(GENERATE OUTPUT ${PROJECT_BINARY_DIR}/python/setup.py INPUT ${PROJECT_BINARY_DIR}/python/setup.py.in)
 search_python_module(NAME setuptools PACKAGE setuptools)
 search_python_module(NAME wheel PACKAGE wheel)
+
 add_custom_command(
         OUTPUT python/dist/timestamp
         COMMAND ${CMAKE_COMMAND} -E remove_directory dist
         COMMAND ${CMAKE_COMMAND} -E make_directory ${PYTHON_PROJECT}/.libs
-        # Don't need to copy static lib on Windows.
+
         COMMAND ${CMAKE_COMMAND} -E $<IF:$<STREQUAL:$<TARGET_PROPERTY:Libmem,TYPE>,SHARED_LIBRARY>,copy,true>
         $<$<STREQUAL:$<TARGET_PROPERTY:Libmem,TYPE>,SHARED_LIBRARY>:$<TARGET_SONAME_FILE:Libmem>>
         ${PYTHON_PROJECT}/.libs
         COMMAND ${CMAKE_COMMAND} -E $<IF:$<STREQUAL:$<TARGET_PROPERTY:Libmem,TYPE>,SHARED_LIBRARY>,copy,true>
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:pyLibmem> ${PYTHON_PROJECT}/libmem
+
         COMMAND ${Python_EXECUTABLE} setup.py bdist_wheel
         COMMAND ${CMAKE_COMMAND} -E touch ${PROJECT_BINARY_DIR}/python/dist/timestamp
+        
         MAIN_DEPENDENCY
             python/setup.py.in
         DEPENDS
