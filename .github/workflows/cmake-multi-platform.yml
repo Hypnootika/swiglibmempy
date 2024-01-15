@@ -58,8 +58,15 @@ jobs:
 
       - name: Build
         run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: wheel-file
+          path: build/python/dist/*.whl
 
-  release:
+
+
+   release:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
@@ -69,6 +76,7 @@ jobs:
       - name: Download Artifacts
         uses: actions/download-artifact@v2
         with:
+          name: wheel-file
           path: build/python/dist
 
       - name: Prepare Release Asset
