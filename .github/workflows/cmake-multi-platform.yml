@@ -80,12 +80,12 @@ jobs:
           path: build/python/dist
 
       - name: Prepare Release Asset
-        id: prepare_release
         run: |
           whl_file=$(ls build/python/dist/*.whl)
           echo "whl_file_path=$whl_file" >> $GITHUB_ENV
 
       - name: Create Release
+        id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -102,7 +102,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.prepare_release.outputs.whl_file }}
+          asset_path: ${{ env.whl_file_path }}
           asset_name: ${{ github.event.inputs.releaseVersion }}.whl
           asset_content_type: application/octet-stream
-
