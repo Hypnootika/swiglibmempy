@@ -1,8 +1,8 @@
-add_library(Libmem)
-target_sources(Libmem 
-        PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/libmem/libmem.h>
-        PRIVATE src/libmem.cpp
-)
+add_library(Libmem STATIC
+        include/libmem/libmem.h)
+target_sources(Libmem PRIVATE
+    include/libmem/libmem.h
+    src/libmem.cpp)
 target_include_directories(Libmem
         PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

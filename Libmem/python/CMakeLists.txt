@@ -1,13 +1,16 @@
 set_property(SOURCE libmem.i PROPERTY CPLUSPLUS ON)
 set_property(SOURCE libmem.i PROPERTY SWIG_MODULE_NAME pyLibmem)
 swig_add_library(pyLibmem
-        TYPE SHARED
+        TYPE MODULE
         LANGUAGE python
         OUTPUT_DIR ${CMAKE_BINARY_DIR}/python/${PYTHON_PROJECT}/libmem
         SOURCES libmem.i)
+
 add_library(${PROJECT_NAMESPACE}::pyLibmem ALIAS pyLibmem)
 target_include_directories(pyLibmem PRIVATE ../include ${Python_INCLUDE_DIRS})
 set_property(TARGET pyLibmem PROPERTY SWIG_USE_TARGET_INCLUDE_DIRECTORIES ON)
+
+target_compile_features(pyLibmem PRIVATE cxx_std_20)
 if(APPLE)
   set_target_properties(pyLibmem PROPERTIES
     SUFFIX ".so"
